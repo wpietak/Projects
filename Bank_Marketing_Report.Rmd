@@ -1,0 +1,672 @@
+---
+title: "Bank Marketing Report"
+author: "Wojciech Piętak"
+
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+The aim of this report is to analyze the following data set: https://archive.ics.uci.edu/ml/datasets/Bank+Marketing# in respect to dependencies between client's characteristics, along with economic background, described by the data related to marketing campaigns and a fact of subscribing a term deposit by this client. In order to perform this task we will develop 3 classification models with a binary target variable stating whether a given client has subscribed a term deposit or not, evaluate their quality and provide analyses concerning impact of particular variables on target variable. Insight gained from this task conclusions may help
+develop marketing campaigns by optimizing clients targeting actions (and possibly their form), helping to choose clients that are most probable to subscribe a term deposit when targeted, thus decreasing advertising costs.
+
+The data set consist of 41188 observations. There are 20 explanatory variables and a target variable. Explanatory variables concern client's status, information about his bank loans, information related to the last contact with a client within current campaign and attributes regarding other campaigns, as well as some data concerning economic background, such as interest rates.  
+
+List of variables along with their description:
+
+* bank client data:
+1. age (numeric)
+2. job: type of job (categorical: 'admin.','blue-collar','entrepreneur','housemaid','management','retired','self-employed','services','student','technician','unemployed','unknown')
+3. marital: marital status (categorical: 'divorced','married','single','unknown'; note: 'divorced' means divorced or widowed)
+4. education (categorical: 'basic.4y','basic.6y','basic.9y','high.school','illiterate','professional.course','university.degree','unknown')
+5. default: has credit in default? (categorical: 'no','yes','unknown')
+6. housing: has housing loan? (categorical: 'no','yes','unknown')
+7. loan: has personal loan? (categorical: 'no','yes','unknown')
+* related with the last contact of the current campaign:
+8. contact: contact communication type (categorical: 'cellular','telephone')
+9. month: last contact month of year (categorical: 'jan', 'feb', 'mar', ..., 'nov', 'dec')
+10. day_of_week: last contact day of the week (categorical: 'mon','tue','wed','thu','fri')
+11. duration: last contact duration, in seconds (numeric). Important note: this attribute highly affects the output target (e.g., if duration=0 then y='no'). Yet, the duration is not known before a call is performed. Also, after the end of the call y is obviously known. Thus, this input should only be included for benchmark purposes and should be discarded if the intention is to have a realistic predictive model.
+* other attributes:
+12. campaign: number of contacts performed during this campaign and for this client (numeric, includes last contact)
+13. pdays: number of days that passed by after the client was last contacted from a previous campaign (numeric; 999 means client was not previously contacted)
+14. previous: number of contacts performed before this campaign and for this client (numeric)
+15. poutcome: outcome of the previous marketing campaign (categorical: 'failure','nonexistent','success')
+# social and economic context attributes
+16. emp.var.rate: employment variation rate - quarterly indicator (numeric)
+17. cons.price.idx: consumer price index - monthly indicator (numeric)
+18. cons.conf.idx: consumer confidence index - monthly indicator (numeric)
+19. euribor3m: euribor 3 month rate - daily indicator (numeric)
+20. nr.employed: number of employees - quarterly indicator (numeric)
+* output variable (desired target):
+21. y - has the client subscribed a term deposit? (binary: 'yes','no')
+
+First, let's load necessary libraries:
+
+```{r message = F, warning = F}
+library(dplyr)
+library(ROCR)
+library(corrplot)
+library(mgcv)
+#library(Ecdat)
+#library(rpart)
+#library(party)
+library(randomForest)
+library(car)
+library(caret)
+library(class)
+library(pROC)
+library(ggplot2)
+#library(e1071)
+#library(extraTrees)
+#library(xgboost)
+
+```
+
+And read the data:
+
+```{r}
+DATA_SET <- read.csv2('bank-additional-full.csv')   # set the correct directory
+head(DATA_SET)
+```
+
+
+## Data cleaning and preprocessing
+
+The data needs some preprocessing and cleaning in order to get binary variables instead of "yes"/"no" or factor variables and delete records with missing values. 
+
+Let's check how many "unknowns" there are in each column:
+
+```{r}
+na <- data.frame(colname = colnames(DATA_SET), n = 0)
+for (i in 1:21) {
+  na$n[i] = sum(DATA_SET[,i] == "unknown")
+}
+na
+```
+
+We can delete records with unknown status of client's job type, marital status and possession of housing or personal loan. However, there are too many records to be deleted due to the lack of data considering client's education and credit default.  
+
+Let's check values structure in these columns:
+
+```{r}
+table(DATA_SET$education)
+table(DATA_SET$default)
+```
+
+There are only 3 defaults in the whole data set. This column gives us virtually no information. We can drop it. Education is more problematic. We can see that "university.degree" is the most common value in this column. It is also the highest degree of education (which facilitates interpretation). We can create dummy variables for each category from this column and treat "university.degree" as a default value (we have to choose one in order to avoid collinearity). Observation with unknown education will be have assigned default category. We have to do the same for all categorical variables. Let's start with the data related to clients and last contact. We will also drop column duration due to reason provided in the data description (as we want to build predictive models).
+
+```{r}
+DATA_SET <- DATA_SET[!(DATA_SET$job == 'unknown' | DATA_SET$marital == 'unknown' | DATA_SET$housing == 'unknown' | DATA_SET$loan == 'unknown'),]
+DATA_SET <- DATA_SET[,!(colnames(DATA_SET) %in% c('default', 'duration'))]
+table(DATA_SET$job)
+table(DATA_SET$marital)
+table(DATA_SET$contact)
+for (i in unique(DATA_SET$job[DATA_SET$job != 'unemployed'])) {                 # set 'unemployed' as default
+  DATA_SET$new = ifelse(DATA_SET$job == i, 1, 0)
+  colnames(DATA_SET)[colnames(DATA_SET) == 'new'] = i
+}
+for (i in unique(DATA_SET$marital[DATA_SET$marital != 'single'])) {             # set 'single' as default
+  DATA_SET$new = ifelse(DATA_SET$marital == i, 1, 0)
+  colnames(DATA_SET)[colnames(DATA_SET) == 'new'] = i
+}
+for (i in unique(DATA_SET$education[!(DATA_SET$education %in% c('university.degree', 'unknown'))])) {      
+  DATA_SET$new = ifelse(DATA_SET$education == i, 1, 0)
+  colnames(DATA_SET)[colnames(DATA_SET) == 'new'] = i
+}
+DATA_SET$housing = ifelse(DATA_SET$housing == 'yes', 1, 0)
+DATA_SET$loan = ifelse(DATA_SET$loan == 'yes', 1, 0)
+for (i in unique(DATA_SET$contact[DATA_SET$contact != 'cellular'])) {           # set 'cellular' as default
+  DATA_SET$new = ifelse(DATA_SET$contact == i, 1, 0)
+  colnames(DATA_SET)[colnames(DATA_SET) == 'new'] = i
+}
+for (i in unique(DATA_SET$month[DATA_SET$month != 'jan'])) {                    # set 'jan' as default
+  DATA_SET$new = ifelse(DATA_SET$month == i, 1, 0)
+  colnames(DATA_SET)[colnames(DATA_SET) == 'new'] = i
+}
+for (i in unique(DATA_SET$day_of_week[DATA_SET$day_of_week != 'mon'])) {        # set 'mon' as default
+  DATA_SET$new = ifelse(DATA_SET$day_of_week == i, 1, 0)
+  colnames(DATA_SET)[colnames(DATA_SET) == 'new'] = i
+}
+DATA_SET <- DATA_SET[,!(colnames(DATA_SET) %in% c('job', 'marital', 'education', 'contact', 'month', 'day_of_week'))]
+```
+
+Now we have to deal with data concerning previous contacts with client. The problematic issue that has to be addressed is that many clients were not contacted previously. For example number of days since the last contact from previous campaign (pdays) for such clients is set to 999. It completely distorts this variable. Let's look closer on these variables structures:
+
+```{r}
+table(DATA_SET$campaign)
+table(DATA_SET$pdays)
+table(DATA_SET$previous)
+table(DATA_SET$poutcome)
+```
+
+First important remark is that observations with pdays = 999 account for over 96% of all observations. Most of other values have at best few dozens of occurrences. Therefore, we can transform this variable into binary stating whether a client was contacted in the previous campaign or not. Second remark is that previous = 0 is the same as poutcome = 'nonexistent'. Therefore, we will transform poutcome into binary stating whether there was a success in previous campaign. We will deal with campaign and previous in the next section.
+
+```{r}
+DATA_SET$prev_cont = ifelse(DATA_SET$pdays == 999, 0, 1)
+DATA_SET$p_success = ifelse(DATA_SET$poutcome == "success", 1, 0)
+DATA_SET <- DATA_SET[,!(colnames(DATA_SET) %in% c('pdays', 'poutcome'))]
+```
+
+We have to correct emp.var.rate and euribor3m variables, because Excel has transformed some values into dates, and change other macroeconomic variables into doubles:
+
+```{r}
+DATA_SET$emp.var.rate = as.double(ifelse(DATA_SET$emp.var.rate == "01.sty", 1.1, ifelse(DATA_SET$emp.var.rate == "01.kwi", 1.4, DATA_SET$emp.var.rate))) 
+DATA_SET$cons.price.idx = as.double(DATA_SET$cons.price.idx)
+DATA_SET$cons.conf.idx = as.double(DATA_SET$cons.conf.idx)
+DATA_SET$euribor3m = as.double(gsub("sty", "01", gsub("mar", "03", gsub("kwi", "04", gsub("maj", "05", gsub("lip", "07", gsub("gru", "12", DATA_SET$euribor3m)))))))
+DATA_SET$nr.employed = as.double(DATA_SET$nr.employed)
+```
+
+Transform the target into binary:
+
+```{r}
+DATA_SET$y = ifelse(DATA_SET$y == "yes", 1, 0)
+```
+
+
+## EDA
+
+In the next step we will analyze the data in descriptive terms (including plots) and in terms of correlations between variables. In particular, we want to gain some insight on how does target variable depend on other variables. First, let's define some useful functions:
+
+```{r}
+#Function to draw histograms and density estimates
+DoHistogram = function(values, values.name) {
+  histogram = hist(values, plot = FALSE)
+  density.estimate = density(values)
+  y.maximum = max(histogram$density, density.estimate$y)
+  plot(histogram, freq = FALSE, ylim = c(0, y.maximum), 
+       xlab = values.name, ylab = "density", main = NULL)
+  lines(density.estimate, lwd = 2)
+}
+#Function to draw scatterplots and splines
+DoScatterplot = function(x.values, x.name) {
+  plot(x.values, DATA_SET$y,
+       xlab = x.name, ylab = "y", main = NULL, col = gray(0.4))
+  lines(smooth.spline(x.values, DATA_SET$MORT), lwd = 2)
+  abline(lm(DATA_SET$y ~ x.values)$coef, col = gray(0.7), lwd = 2, lty = 2)
+}
+#Function to obtain p-values of the correlations
+cor.mtest = function(mat, ...) {
+  mat = as.matrix(mat)
+  n = ncol(mat)
+  p.mat= matrix(NA, n, n)
+  diag(p.mat) = 0
+  for (i in 1:(n - 1)) {
+    for (j in (i + 1):n) {
+      tmp = cor.test(mat[, i], mat[, j], ...)
+      p.mat[i, j] = p.mat[j, i] = tmp$p.value
+    }
+  }
+  colnames(p.mat) = rownames(p.mat) = colnames(mat)
+  p.mat
+}
+#Function to create barplots with impact on target variable
+plotBarplot = function(x,x_nms){
+  barplot(tapply(DATA_SET$y,x,mean), ylab="y",names.arg=c(0,1),xlab=x_nms,ylim=c(0,1))
+}
+```
+
+And take a look on desriptive statistics and basic correlations:
+
+```{r}
+print(summary(DATA_SET))
+cormat = cor(DATA_SET)
+par(mfrow = c(1,1))
+corrplot(cormat, method="color", tl.cex = 0.6)
+p.mat = cor.mtest(DATA_SET)
+corrplot(cormat, type="upper", order="hclust", tl.cex = 0.6, pch.cex = 0.7, p.mat = p.mat, sig.level = 0.01)    # It works when ran through Knit, otherwise must be p.mat$p instead of p.mat (however p.mat$p does not work for Knit)
+```
+
+Most of the variables are binary. Some of them are quite well balanced (e.g. days), but for some positive value accounts for only few percents (e.g. some months, prev_cont, p_success). Values of campaign and previous variables have very asymmetric distribution.
+
+In terms of correlation, there are not many strong statistical dependencies. High correlation is visible mainly between macroeconomic variables, between macroeconomic and monthly variables (seasonality), between education and job and there is of course negative dependence between binary variables that exclude each other. Target variable is completely uncorrelated with over 1/3 of variables; there is a visible correlation with some macroeconomic variables and variables related to previous contacts/campaigns. 
+
+Willingness to subscribe a deposit is negatively correlated with interest rates on the interbank market and situation on labor market (number of employees and its volatility). Those 3 macroeconomic variables are strongly correlated with each other. At the peak of economic boom, employment is still very high, but people start to worry about the future. They increase demand for money (liquid assets), because they expect prices to fall, supply of real command of capital (financial capital/savings) decreases, which increases its price (interests). Therefore, they are not willing to subscribe a term deposit with frozen means, because they need liquid assets, so they prefer deposits on demand. Simultaneously companies increase demand for command of capital, as they seek for liquidity, which also increases short-term interests rates. But then comes the bust - demand for labor decreases, employers decrease job places, unemployment increases, which decreases number of employees and employment variation. Also, central bank's intervention comes in place - it triggers fiduciary expansion, increasing the supply of command of capital without real savings, by providing banks with created money, thus decreasing interest rates. At the time, markets clear up from malinvestments and unemployment increases (number of employees decreases). Then people expect situation to improve and are more willing to save and invest (rather than increase cash balances). Hence, term deposit subscriptions rise.
+
+However, macroeconomic situation is not what bank has impact on. It can give some insight on when to increase or decrease advertising or run intensive marketing campaigns, but gives no information about which clients to choose. There comes information from previous campaigns - it turns out that people contacted in previous campaigns, especially those contacted many times in previous campaigns and those contact with whom ended up with a success are more willing to subscribe a term deposit. But this may be due to the fact that the bank have already picked people with higher probability of success when targeted.
+
+Now, let's deal with campaign and previous variables.
+
+```{r}
+prev_y_0 <- DATA_SET[,colnames(DATA_SET) %in% c('previous', 'y')] %>%
+   group_by(previous) %>%
+   summarize(y_0 = sum(y == 0), y_1 = sum(y == 1), ratio = sum(y == 1) / sum(y == 0)) %>%
+   select(previous, y_0, y_1, ratio)
+prev_y_0
+camp_y_0 <- DATA_SET[,colnames(DATA_SET) %in% c('campaign', 'y')] %>%
+   group_by(campaign) %>%
+   summarize(y_0 = sum(y == 0), y_1 = sum(y == 1), ratio = sum(y == 1) / sum(y == 0)) %>%
+   select(campaign, y_0, y_1, ratio)
+camp_y_0
+```
+
+We can observe that values of those variables are very unbalanced. Lower values are very frequent and higher - not. Also, in both cases there is a visible trend in target variable values proportion, at least to some point - for values above given threshold the trend disappears (especially in case of campaign) and numbers of observations decrease very quickly. It seems reasonable to merge those higher values with very few observations and no trend in target variable, thus creating intervals and transforming variables into categorical in order to create dummies. Interestingly, mentioned trends have opposite direction - the number of contacts in previous campaigns increases probability of success, but the number of contacts in a current campaign decreases it.
+
+```{r}
+prev_y <- DATA_SET[,colnames(DATA_SET) %in% c('previous', 'y')] %>%
+  mutate(g_prev = ifelse(previous == 0, '0', ifelse(previous == 1, '1', ifelse(previous == 2, '2', '3+')))) %>%
+  group_by(g_prev) %>%
+  summarize(y_0 = sum(y == 0), y_1 = sum(y == 1), ratio = sum(y == 1) / sum(y == 0)) %>%
+  select(g_prev, y_0, y_1, ratio)
+prev_y
+camp_y <- DATA_SET[,colnames(DATA_SET) %in% c('campaign', 'y')] %>%
+  mutate(g_camp = ifelse(campaign == 1, '1', ifelse(campaign <= 3, '2-3', ifelse(campaign <= 6, '4-6', '7+')))) %>%
+  group_by(g_camp) %>%
+  summarize(y_0 = sum(y == 0), y_1 = sum(y == 1), ratio = sum(y == 1) / sum(y == 0)) %>%
+  select(g_camp, y_0, y_1, ratio)
+camp_y
+```
+
+Data appears to be more balanced now, trend is clearly visible and each category has some substantial number of observations. We can create dummies now:
+
+```{r}
+DATA_SET$previous = ifelse(DATA_SET$previous == 0, 'prev_0', ifelse(DATA_SET$previous == 1, 'prev_1', ifelse(DATA_SET$previous == 2, 'prev_2', 'prev_3_')))
+DATA_SET$campaign = ifelse(DATA_SET$campaign == 1, 'camp_1', ifelse(DATA_SET$campaign <= 3, 'camp_2-3', ifelse(DATA_SET$campaign <= 6, 'camp_4-6', 'camp_7_')))
+for (i in unique(DATA_SET$previous[DATA_SET$previous != 'prev_0'])) {           # set 0 as default
+  DATA_SET$new = ifelse(DATA_SET$previous == i, 1, 0)
+  colnames(DATA_SET)[colnames(DATA_SET) == 'new'] = i
+}
+for (i in unique(DATA_SET$campaign[DATA_SET$campaign != 'camp_1'])) {           # set 1 as default
+  DATA_SET$new = ifelse(DATA_SET$campaign == i, 1, 0)
+  colnames(DATA_SET)[colnames(DATA_SET) == 'new'] = i
+}
+DATA_SET <- DATA_SET[,!(colnames(DATA_SET) %in% c('previous', 'campaign'))]
+colnames(DATA_SET) <- gsub("-", "_", colnames(DATA_SET))
+```
+
+Almost all of variables in the dataset (except for age and macroeconomic variables) are binary. In the next step we will assess for which of them positive value may increase or decrease probability of positive value of the target variable. In order to do so, we will create bar plots with average value of the target variable, depending on value of each binary variable.
+
+```{r fig.width = 10}
+par(mfrow=c(3,4))
+invisible(mapply(plotBarplot, x=DATA_SET[,!(colnames(DATA_SET) %in% c('age', 'emp.var.rate', 'cons.price.idx', 'cons.conf.idx', 'euribor3m', 'nr.employed', 'y'))], x_nms=colnames(DATA_SET)[!(colnames(DATA_SET) %in% c('age', 'emp.var.rate', 'cons.price.idx', 'cons.conf.idx', 'euribor3m', 'nr.employed', 'y'))]))
+```
+
+We can see that probability of positive response of the potential customer is higher if he is retired, if he is a student or if he is illiterate. It is lower if he is called on telephone or if he is called in May. Probability of success grows substantially if he is called in October, December, March or September. Clients contacted in previous campaigns are more likely to accept the offer, especially if it ended up with a success or they were contacted 2 or more times. 
+
+The last step concerning EDA is clustering. We will use K-Means Clustering applied to 4 categories of variables (type of client, information about given contact, information concerning previous contacts and campaigns and macroeconomic variables) to explore some categories of clients or circumstances under which probability of term deposit subscription is substantially higher. In order to choose the number of groups we will use the "elbow rule" to see if there is a threshold after which within-cluster sum of squares stops to drop substantially with further divisions. Let's start with macroeconomic variables    
+
+```{r}
+set.seed(123)
+wcss <- vector()
+for (i in 1:10) wcss[i] = sum(kmeans(DATA_SET[,c('euribor3m','cons.price.idx', 'nr.employed', 'emp.var.rate', 'cons.conf.idx', 'y')], i)$withinss)
+plot(1:10, wcss, type = "b")
+```
+
+```{r}
+set.seed(123)
+kmeans(DATA_SET[,c('euribor3m','cons.price.idx', 'nr.employed', 'emp.var.rate', 'cons.conf.idx', 'y')], 2)$centers
+```
+
+It is quite clear that - as described before - there is a strong willingness to subscribe a term deposit in the phase of business cycle when interest rates have been already decreased by the central bank, prices may have dropped a little bit (but the effect of increased demand for money on prices was reduced by central bank intervention), unemployment is high and situation is pretty bad in general. On the other hand, at the very peak of the boom, just before the collapse, when the yield curve happens to reverse, the willingness to subscribe a term deposit is very low.
+
+Next, let's focus on clients types categories, including job, education, age etc.
+
+```{r}
+set.seed(34)
+wcss <- vector()
+for (i in 1:10) wcss[i] = sum(kmeans(DATA_SET[,c(1:3, 9:27)], i)$withinss)
+plot(1:10, wcss, type = "b")
+```
+
+
+```{r}
+set.seed(34)
+kmeans(DATA_SET[,c(1:3, 9:27)], 2)$centers
+kmeans(DATA_SET[,c(1:3, 9:27)], 7)$centers
+```
+
+Elbow rule indicates k = 2 as optimal number of clusters, but there is nothing interesting actually in such clustering. Let's look at k = 7 results. We can see that there is one group with particularly high probability of term deposit subscription - old, probably retired, rather married and not necessarily well-educated people. The second group with slightly higher probability of success are quite young people, maybe just after studies, starting to earn money on they own.
+
+Now, let's take a look on data concerning characteristics of a given contact:
+
+```{r}
+set.seed(30)
+wcss <- vector()
+for (i in 1:20) wcss[i] = sum(kmeans(DATA_SET[,c(9,28:42)], i)$withinss)
+plot(1:20, wcss, type = "b")
+set.seed(155)
+wcss <- vector()
+for (i in 1:20) wcss[i] = sum(kmeans(DATA_SET[,c(9,28:42)], i)$withinss)
+plot(1:20, wcss, type = "b")
+set.seed(72)
+wcss <- vector()
+for (i in 1:20) wcss[i] = sum(kmeans(DATA_SET[,c(9,28:42)], i)$withinss)
+plot(1:20, wcss, type = "b")
+```
+
+
+```{r}
+set.seed(30)
+kmeans(DATA_SET[,c(9,28:42)], 11)$centers
+kmeans(DATA_SET[,c(9,28:42)], 11)$size
+kmeans(DATA_SET[,c(9,28:42)], 19)$centers
+set.seed(155)
+kmeans(DATA_SET[,c(9,28:42)], 11)$centers
+set.seed(72)
+kmeans(DATA_SET[,c(9,28:42)], 11)$centers
+```
+
+There is no one clearly pointed by elbow rule k value. Curves and means in Clusters are very sensitive to chosen seed and they give us no interesting insight about the data. 
+
+Finally, let's analyze data concerning previous contacts and campaigns.
+
+```{r}
+set.seed(3)
+wcss <- vector()
+for (i in 1:10) wcss[i] = sum(kmeans(DATA_SET[,c(9,43:50)], i)$withinss)
+plot(1:10, wcss, type = "b")
+set.seed(43)
+wcss <- vector()
+for (i in 1:10) wcss[i] = sum(kmeans(DATA_SET[,c(9,43:50)], i)$withinss)
+plot(1:10, wcss, type = "b")
+set.seed(28)
+wcss <- vector()
+for (i in 1:10) wcss[i] = sum(kmeans(DATA_SET[,c(9,43:50)], i)$withinss)
+plot(1:10, wcss, type = "b")
+```
+
+
+```{r}
+set.seed(3)
+kmeans(DATA_SET[,c(9,43:50)], 4)$centers
+kmeans(DATA_SET[,c(9,43:50)], 9)$centers
+kmeans(DATA_SET[,c(9,43:50)], 9)$size
+set.seed(43)
+kmeans(DATA_SET[,c(9,43:50)], 5)$centers
+set.seed(28)
+kmeans(DATA_SET[,c(9,43:50)], 4)$centers
+```
+
+Similarly as above, curves are very sensitive to seed selection, but there is a visible tendency that clients not contacted before are far less likely to accept the offer when targeted. However, as mentioned before, it may be due to the fact that bank decides to contact clients that have higher probability of success - they do not subscribe because they have subscribed previously, but they are contacted in several campaigns, because they have responded positively in the previous campaigns.
+
+
+## Models
+
+In this part we will develop 3 classification models in order to precisely assess impact of particular variables in the data set on the target variable. Before we start modeling, we have to divide data set into training set and validation set. However, we can observe that the data is not well balanced:
+
+```{r}
+table(DATA_SET$y)
+sum(DATA_SET$y == 0) / sum(DATA_SET$y == 1)
+```
+
+Therefore, when assessing the models (while comparing models or tuning hyperparameters) or choosing the optimal cut-off, we will evaluate cost-based performance with a cost-matrix assigning weights according to the ratio of appearances of each value in the data:
+
+```{r}
+#Cost-based approach to assessing the model
+CalculateCost = function(cut.off, cost.matrix, score, true.y){
+  prediction = ifelse(score > cut.off, 1, 0)
+  confusion.matrix = prop.table(table(true.y, 
+                                      factor(prediction, levels = c(0, 1))))
+  return(sum(cost.matrix * confusion.matrix))
+}
+COST_MATRIX = matrix(c(0, 7.87, 1, 0), 2)
+```
+
+Split the data into training set and validation set:
+
+```{r}
+set.seed(1)
+rand = sample(1:nrow(DATA_SET), 0.85 * nrow(DATA_SET)) 
+train = DATA_SET[rand,]
+val = DATA_SET[-rand,]
+```
+
+#### Logistic Regression
+
+First modeling approach that we will take is Logistic Regression. We will use Bayesian Information Criterion to select explanatory variables and then tune optimal cut-off based on cost-based performance.
+
+```{r}
+full.logit = glm(y ~ ., data = train, family = binomial)
+full.logit
+BIC.logit = step(full.logit, k = log(nrow(train)), trace = 0)
+BIC.logit
+```
+
+A lot of variables concerning macroeconomic situation or information on previous contacts. Variables in those two groups are highly correlated with each other. Let's check Variance Inflation Factor then:
+
+```{r}
+vif(BIC.logit)
+```
+
+VIF values for emp.var.rate, cons.price.idx and nr.employed, as well as for prev_cont and p_success are unacceptably high. This implies collinearity. We can either drop some of these values from the model or reduce dimensionality, which is associated with further data preprocessing. Nonetheless, let's move back and perform Principal Component Analysis.
+
+First, let's try to create one macroeconomic variable indicating stage of the business cycle:
+
+```{r}
+pca_macro <- preProcess(x = DATA_SET[,4:8], method = 'pca', pcaComp = 1)
+pca_macro$rotation
+pca_macro_pred <- predict(pca_macro, DATA_SET[,4:8])
+cor(pca_macro_pred, DATA_SET[,4:9])
+```
+
+Reduced PCA component is low when there is high variability on labor market, prices are high, consumers have quite positive attitude, short-term interest rates are high and  unemployment is low. Thus, it is low at the peak of economic boom, at the verge of the collapse. This component is positively correlated with target variable, which is consistent with our previous considerations.
+
+Now let's deal with variables concerning previous contacts and campaigns. This time let's create 2 components, as effects of contacts in previous campaigns and during current campaign may differ.
+
+```{r}
+pca_prev <- preProcess(x = DATA_SET[,43:50], method = 'pca', pcaComp = 2)
+pca_prev$rotation
+pca_prev_pred <- predict(pca_prev, DATA_SET[,43:50])
+cor(pca_prev_pred, DATA_SET[,c(9,43:50)])
+```
+
+It seems that these components can be interpreted as follows: PC1 - responsible for previous campaigns and succeeding during them, PC2 - responsible for current campaign and number of contacts. PC1 is correlated with target value.
+
+Transform the data to include the components:
+
+```{r}
+DATA_SET$pc_macro <- pca_macro_pred$PC1
+DATA_SET$pc1_prev <- pca_prev_pred$PC1
+DATA_SET$pc2_prev <- pca_prev_pred$PC2
+DATA_SET <- DATA_SET[,-c(4:8, 43:50)]
+```
+
+Now we have to repeat previous steps - divide the data into training set and validation set and perform logistic regression.
+
+```{r}
+set.seed(1)
+rand = sample(1:nrow(DATA_SET), 0.85 * nrow(DATA_SET)) 
+train = DATA_SET[rand,]
+val = DATA_SET[-rand,]
+```
+
+```{r}
+full.logit = glm(y ~ ., data = train, family = binomial)
+full.logit
+BIC.logit = step(full.logit, k = log(nrow(train)), trace = 0)
+BIC.logit
+```
+
+It appears that blue collar workers are not willing to accept the offer, the opposite is true for students. It is not a good idea to contact the client in May, August, November or April. It is better to call them in March and in the middle of the week, definitely not on Monday. Also, macroeconomic conditions are important, as well as successes in previous campaigns.
+
+Logistic regression returns probabilities of the possible outcomes, not exact values. We need to choose an optimal cut-off to decide what is the probability level, above which positive value of the target variable should be assigned. We will evaluate cost-based performance to choose this level.
+
+```{r}
+m = mean(DATA_SET$y)
+rand_per = COST_MATRIX[2,1] * m / 2 + COST_MATRIX[1,2] * (1 - m) / 2            # performance of the random outcome model
+rand_per                        
+```
+
+```{r}
+score = costs = list()
+CUT_OFFS = seq(0, 1, by = 0.01) 
+score[[1]] = predict(BIC.logit, newdata = val, type = "response")
+costs[[1]] = sapply(CUT_OFFS, CalculateCost, cost.matrix = COST_MATRIX,
+                    score = score[[1]], true.y = val$y)
+score[[2]] = predict(BIC.logit, type = "response")
+costs[[2]] = sapply(CUT_OFFS, CalculateCost, cost.matrix = COST_MATRIX,
+                    score = score[[2]], true.y = train$y)
+plot(data.frame(CUT_OFFS, rand_per), type = "l", lty = 3, log="y",
+     ylim = range(c(rand_per, unlist(costs))),
+     ylab = "Cost per client", xlab = "Cut-off")
+for (i in 1:2) {
+  lines(CUT_OFFS, costs[[i]], lty = i, lwd = 2)
+  points(CUT_OFFS[which.min(costs[[i]])], min(costs[[i]]),
+         pch = 19, cex = 1.3)
+}
+legend("topright", c("Validation", "Training", "Random"),
+       lty = c(1, 2, 3), cex = .7, ncol = 3,
+       lwd = c(2, 2, 1))
+```
+
+```{r}
+lr_opt_co <- CUT_OFFS[which.min(costs[[1]])]                
+lr_opt_co
+min(costs[[1]])                                                                 
+```
+
+#### Random Forest
+
+The second model we will develop is Random Forest. Random Forest requires factor target variable in classification problem, so we need to transform it.
+
+```{r}
+train$y_fact = factor(train$y, levels = c(0,1))
+val$y_fact = factor(val$y, levels = c(0,1))
+```
+
+First, let's build initial Random Forest model using all explanatory variables, 100 trees and default number of sampled variables used for a split (squared root of the number of all variables). It is crucial to take into account proper classes weights.
+
+```{r}
+set.seed(8)
+rf_initial = randomForest(y_fact ~ ., data = train[,-4], ntree=100, classwt = c(1, 7.87), do.trace = T)
+rf_initial
+varImpPlot(rf_initial)
+plot(rf_initial)
+```
+
+We can see that with an increase of number of trees above few dozens, performance does not improve substantially. Next, we will choose optimal number of variables selected for splits. Optimality is, again, defined by cost-based performance.
+
+```{r}
+set.seed(8)
+mtry = c(1:ncol(train[,-c(4,41)]))
+cost=c()
+for(i in 1:length(mtry)){
+  #print(i)
+  cost[i] = sum(prop.table(randomForest(y_fact ~ ., data = train[,-4], ntree = 40, mtry = mtry[i], classwt = c(1, 7.87))$confusion[,-3])*COST_MATRIX)
+}
+plot(mtry, cost, type="l")
+```
+
+```{r fig.width = 10}
+rf_optimal = randomForest(y_fact ~ ., data = train[,-4], ntree = 100, mtry = 7, classwt = c(1, 7.87), do.trace = T)
+varImpPlot(rf_optimal, cex = 0.8)
+```
+
+Random Forest model suggests that macroeconomic conditions are the most important. Surprisingly, age turned out to be almost as much important, although it was omitted in Logistic Regression. Probably age impact is not linear and hence Random Forest was able to capture this dependence, while Logistic Regression was not. It is consistent with findings from EDA part, where we investigated that young people just after studies and the oldest, already retired people are two groups with the highest probability of positive response to term deposit offer. Components responsible for previous contacts and campaigns are next in line most important variables.
+
+#### K-Nearest Nieghbors
+
+The final model we will build is K-Nearest Nieghbors model. KNN algorithm assigns classes to observations from the validation set by taking K nearest observations from the training set and checking which class is more common among these K observations. There is no way of assigning class weights in KNN function. However, it can be done by oversampling the observations from the training set - for instance, if we duplicate each positive observation from the training set, it will work like assigning weight 2 to these observations when calculating "votes" (nearest neighbors ratio).
+
+```{r}
+set.seed(17)
+rand <- sample(1:nrow(train[train$y == 1,]), nrow(train[train$y == 0,]), replace = T)
+train_knn_0 <- train[train$y == 0, -41]
+train_knn_1 <- train[train$y == 1,][rand, -41]
+train_knn <- rbind(train_knn_0, train_knn_1)
+```
+
+Now, let's build the model on modified data. In order to choose optimal number of neighbors (k), we will, obviously, assess models by cost-based performance.
+ 
+```{r}
+knn_models = list()
+cost = c()
+k = seq(3,21,2)
+for(i in 1:length(k)){
+  print(i)
+  knn_models[[i]] = knn(train = train_knn[,-4], test = val[,-c(4,41)], cl = train_knn$y, k = i)
+  cost[i] = sum(prop.table(table(val$y, knn_models[[i]]))*COST_MATRIX)
+}
+plot(seq(3,21,2), cost, type="l")
+```
+
+```{r}
+knn_optimal <- knn(train = train_knn[,-4], test = val[,-c(4,41)], cl = train_knn$y, k = 9)
+```
+
+KNN class of models cannot give us any insight into explanatory variables importance/impact with respect to target variable. Also, since there are too many dimensions, it is impossible to see a plot with areas assigning values.
+
+
+## Models assessment
+
+In order to assess the models, we will pay attention to cost-based performance, recall and precision, as well as ROC curves and associated AUC values. However, it is crucial to take into account business purpose of this task. In fact, we should be concerned mostly about recall value, as long as precision is not too poor. It is due to the fact that we need to address a marketing campaign to the clients that are most likely to respond positively. Therefore, poor recall value would mean that we omit many clients that could possibly subscribe a term deposit if targeted. We definitely want to avoid that. On the other hand, we do not want to contact every possible person, even if he or she almost certainly will reject our offer. However, contacting more clients that reject the offer is more costly than loosing potential clients. Thus, we can let ourselves to contact many people, out of whom majority will not respond positively, in order to address more clients with positive response. Proportions in the data set suggest that out of previous contacts, there were only about 11% positive responses. Therefore, it is probably not such bad thing to have e.g. 20% positive responses on average, if we manage to capture substantial proportion of clients that may respond positively. In simple words, cost of loosing a client is higher than cost of additional contact with negative response. Cost-based performance measure is actually constructed such that it assigns much higher cost to the loss of a client. This measure will help us balance the trade-off between recall and precision.
+
+First, let's look at performance measures concerning Logistic Regression:
+
+```{r}
+# Confusion matrix
+cm_logit <- table(val$y, ifelse(predict(BIC.logit, newdata = val[,-41], type = 'response') > 0.15, 1, 0))
+cm_logit
+# Cost-based performance
+sum(prop.table(cm_logit) * COST_MATRIX)
+# Recall
+sum(cm_logit[2,2]) / sum(cm_logit[2,])
+# Precision
+sum(cm_logit[2,2]) / sum(cm_logit[,2])
+```
+
+Random Forest:
+
+```{r}
+# Confusion matrix
+cm_rf <- table(val$y, predict(rf_optimal, newdata = val[,-41], type = 'response'))
+cm_rf
+# Cost-based performance
+sum(prop.table(cm_rf) * COST_MATRIX)
+# Recall
+sum(cm_rf[2,2]) / sum(cm_rf[2,])
+# Precision
+sum(cm_rf[2,2]) / sum(cm_rf[,2])
+```
+
+And finally K-Nearest Neighbors:
+
+```{r}
+# Confusion matrix
+cm_knn <- table(val$y, knn_optimal)
+cm_knn
+# Cost-based performance
+sum(prop.table(cm_knn) * COST_MATRIX)
+# Recall
+sum(cm_knn[2,2]) / sum(cm_knn[2,])
+# Precision
+sum(cm_knn[2,2]) / sum(cm_knn[,2])
+```
+
+To visualize performance of the models, let's create receiver operating characteristic curves:
+
+```{r}
+roc_logit <- roc(val$y, predict(BIC.logit, newdata = val[,-41], type = 'response'))
+roc_rf <- roc(val$y, predict(rf_optimal, newdata = val[,-41], type = 'prob')[,2])
+roc_knn <- roc(val$y, as.numeric(knn_optimal)-1)
+roc_curves <- ggroc(list(roc_logit = roc_logit, roc_rf = roc_rf, roc_knn = roc_knn))
+roc_curves
+```
+
+We can see that those curves does not cross each other. In every point Logistic Regression ROC curve is above Random Forest ROC curve, which is above K-Nearest Neighbors ROC curve. Therefore areas under those curves are ordered in the same way. Nonetheless, we must be concerned that since KNN algorithm does not return probabilities for classification, but only classes, its curve must be linear and therefore it rises up at the same, average pace - rising up more rapidly at the beginning and more slowly later increases AUC.
+
+Summarize the results:
+
+```{r}
+perf_summary <- data.frame(Model = c('Logistic Regression', 'Random Forest', 'K-Nearest Neighbors'), 
+                           Cost_based_performance = c(sum(prop.table(cm_logit) * COST_MATRIX), sum(prop.table(cm_rf) * COST_MATRIX), sum(prop.table(cm_knn) * COST_MATRIX)), 
+                           Recall = c(sum(cm_logit[2,2]) / sum(cm_logit[2,]), sum(cm_rf[2,2]) / sum(cm_rf[2,]), sum(cm_knn[2,2]) / sum(cm_knn[2,])), 
+                           Precision = c(sum(cm_logit[2,2]) / sum(cm_logit[,2]), sum(cm_rf[2,2]) / sum(cm_rf[,2]), sum(cm_knn[2,2]) / sum(cm_knn[,2])),
+                           AUC = c(roc_logit$auc, roc_rf$auc, roc_knn$auc)
+                          )
+perf_summary
+```
+
+In all categories, except for Recall, Logistic Regression model is the best. In case of Recall KNN turned out to be the best, although it is the worst in all other categories. Due to oversampling method used in its development, it managed to point out the most positive responses at the expense of other performance measures. Therefore, as long as one is not only concerned about Recall, Logistic Regression is the best model.
+
+
+## Summary
+
+We have undertaken a task of developing an algorithm that can help improve performance of marketing campaigns ran by the bank aiming to encourage potential clients to subscribe a term deposit. In order to do so, we used data set consisting of information concerning clients characteristics, contact characteristics, previous contacts and campaigns and macroeconomic conditions. We have analyzed and preprocessed the data and built 3 models: Logistic Regression, Random Forest and K-Nearest Neighbors. Our findings indicate that macroeconomic conditions, precisely stage of business cycle, have crucial impact on willingness to subscribe a deposit. People are the least willing to do so at the very peak of economic boom, at the verge of the collapse and the highest willing to do so after the drop of the prices and firings in companies, when economy is in recession and slowly starts to rebuild. Young workers, just after studies and old, retired people are most willing to accept the offer (especially the second group). Targeting the clients that were also contacted in previous campaigns, especially when they responded positively increases probability of subscription. This is not true in case of contacting people many times during current campaign. Logistic regression turned out to be the best model in general, but KNN had the best Recall at the expense of other performance measures. If the goal is only to capture as many potential clients as possible, KNN is the best; otherwise, Logistic Regression should be chosen. While developing the models cost-based performance was key factor of their assessment. We have used cost-matrix with class weights inversely proportional to distribution in the data. It might be the case that increasing these weights even more (e.g. 1:10 or 1:15 instead of 1:7.87) could increase Recall in case of Logistic Regression for example. Precision at the level of 35% is very high in fact, comparing to actual ~11%. Therefore, it could be decreased a little bit in order to achieve better recall. However, exact weights taking into account not only distributions in the data, but also trade-off ratios that are acceptable (cost of a loss of a client vs. cost of additional contact), would require additional knowledge, depending on business goals of the bank. Also, performances of these models are not very high in general. There is probably some room to improve them by better modeling techniques, better model specification or better data preprocessing.
