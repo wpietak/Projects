@@ -1,6 +1,5 @@
 ---
 title: "Bank Marketing Report"
-author: "Wojciech Piętak"
 
 output:
   html_document:
@@ -13,7 +12,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ## Introduction
 
-The aim of this report is to analyze the following data set: https://archive.ics.uci.edu/ml/datasets/Bank+Marketing# in respect to dependencies between client's characteristics, along with economic background, described by the data related to marketing campaigns and a fact of subscribing a term deposit by this client. In order to perform this task we will develop 3 classification models with a binary target variable stating whether a given client has subscribed a term deposit or not, evaluate their quality and provide analyses concerning impact of particular variables on target variable. Insight gained from this task conclusions may help
+The aim of this report is to analyze the following data set: https://archive.ics.uci.edu/ml/datasets/Bank+Marketing# with respect to dependencies between clients' characteristics, economic environment, and a fact of subscribing a term deposit by this client. In order to perform this exercise we will develop 3 classification models with a binary target variable stating whether a given client has subscribed a term deposit or not, evaluate their quality and provide analyses concerning impact of particular variables on target variable. Insight gained from this task conclusions may help
 develop marketing campaigns by optimizing clients targeting actions (and possibly their form), helping to choose clients that are most probable to subscribe a term deposit when targeted, thus decreasing advertising costs.
 
 The data set consist of 41188 observations. There are 20 explanatory variables and a target variable. Explanatory variables concern client's status, information about his bank loans, information related to the last contact with a client within current campaign and attributes regarding other campaigns, as well as some data concerning economic background, such as interest rates.  
