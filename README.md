@@ -6,4 +6,4 @@ The aim of this project is to analyze a dataset related to the marketing campaig
 
 The following files are related to this project:
 - [Bank_Marketing_Report.Rmd](/Bank_Marketing_Report.Rmd) - code written in R generating the output
-- [Bank_Marketing_Report.Rmd](/Bank_Marketing_Report.html) - a notebook in HTML generated based on the above code; it can be downloaded and opened to see the output without running the code
+- [Bank_Marketing_Report.html](/Bank_Marketing_Report.html) - a notebook in HTML generated based on the above code; it can be downloaded and opened to see the output without running the code
