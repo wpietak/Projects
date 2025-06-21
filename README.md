@@ -1,3 +1,5 @@
+# **Projects**
+
 This repository contains a collection of my projects from the different areas of quantitative finance and data science. A brief description of particular projects and related files is provided below.
 
 ### **Bank Marketing Report**
