@@ -1,14 +1,13 @@
 # **Projects**
 
-This repository contains a collection of my projects from the different areas of quantitative finance and data science. A brief description of particular projects and related files is provided below.
+This repository contains a collection of my projects from different areas of quantitative finance and data science, divided into 3 categories:. 
+- Portfolio Optimization
+- Machine Learning
+- Derivatives Pricing
 
-### **Bank Marketing Report**
+A brief description of particular projects and related files is provided below.
 
-The aim of this project is to analyze a dataset related to the marketing campaigns run by a bank. In order to perform this exercise, 3 classification models are developed to predict whether a given client has subscribed a term deposit or not. The quality of the models is evaluated, and analysis of the impact of particular variables on the target variable is conducted. Insight gained from this exercise may help develop marketing campaigns by optimizing clients targeting actions (and possibly their form), helping to choose clients that are most probable to subscribe a term deposit when targeted, thus decreasing advertising costs. The report is prepared in R.
-
-The following files are related to this project:
-- [Bank_Marketing_Report.Rmd](/Bank_Marketing_Report.Rmd) - R code generating the output
-- [Bank_Marketing_Report.html](/Bank_Marketing_Report.html) - a notebook in HTML generated based on the above code; it can be downloaded and opened to see the output without running the code
+## **Portfolio Optimization**
 
 ### **Evaluation of SBF120 Stocks Portfolios Performance**
 
@@ -23,12 +22,15 @@ The following files are related to this project:
 - [Evaluation_of_SBF120_Stocks_Portfolios_Performance.ipynb](/Evaluation_of_SBF120_Stocks_Portfolios_Performance.ipynb) - Jupyter notebook containing all the codes
 - [sbf120_as_of_end_2018.xlsx](/sbf120_as_of_end_2018.xlsx) - price and market cap data from the end of 2010 to Sep 2021 for the SBF120 stocks as of 2018 end
 
-### **Pricing Options with PDE Implicit Scheme**
+## **Machine Learning**
 
-This project presents pricing of the call-spread and put options with a use of partial differential equation (PDE) implicit scheme. Obtained prices are compared with the prices given by Black-Scholes formula.
+### **Bank Marketing Report**
+
+The aim of this project is to analyze a dataset related to the marketing campaigns run by a bank. In order to perform this exercise, 3 classification models are developed to predict whether a given client has subscribed a term deposit or not. The quality of the models is evaluated, and analysis of the impact of particular variables on the target variable is conducted. Insight gained from this exercise may help develop marketing campaigns by optimizing clients targeting actions (and possibly their form), helping to choose clients that are most probable to subscribe a term deposit when targeted, thus decreasing advertising costs. The report is prepared in R.
 
 The following files are related to this project:
-- [Pricing_Options_with_PDE_Implicit_Scheme.ipynb](/Pricing_Options_with_PDE_Implicit_Scheme.ipynb) - Jupyter notebook containing all the codes
+- [Bank_Marketing_Report.Rmd](/Bank_Marketing_Report.Rmd) - R code generating the output
+- [Bank_Marketing_Report.html](/Bank_Marketing_Report.html) - a notebook in HTML generated based on the above code; it can be downloaded and opened to see the output without running the code
 
 ### **Analysis of the Broker-Dealer's Trading Dataset**
 
@@ -41,6 +43,15 @@ Next, clustering using k-means algorithm is applied on the data in order to clas
 The following files are related to this project:
 - [Analysis_of_the_Broker-Dealer's_Trading_Dataset.ipynb](/Analysis_of_the_Broker-Dealer's_Trading_Dataset.ipynb) - Jupyter notebook containing all the codes
 - [trading_data.csv](/trading_data.csv) - the dataset used for the analysis
+
+## **Derivatives Pricing**
+
+### **Pricing Options with PDE Implicit Scheme**
+
+This project presents pricing of the call-spread and put options with a use of partial differential equation (PDE) implicit scheme. Obtained prices are compared with the prices given by Black-Scholes formula.
+
+The following files are related to this project:
+- [Pricing_Options_with_PDE_Implicit_Scheme.ipynb](/Pricing_Options_with_PDE_Implicit_Scheme.ipynb) - Jupyter notebook containing all the codes
 
 ### **Fast-Reversion Limit of the Heston Model**
 
