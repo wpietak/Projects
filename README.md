@@ -1,6 +1,6 @@
 # **Projects**
 
-This repository contains a collection of my projects from different areas of quantitative finance and data science, divided into 3 categories:. 
+This repository contains a collection of my projects from different areas of quantitative finance and data science, divided into 3 categories:
 - Portfolio Optimization
 - Machine Learning
 - Derivatives Pricing
