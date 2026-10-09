@@ -34,14 +34,14 @@ The following files are related to this project:
 
 ### **Analysis of the Broker-Dealer's Trading Dataset**
 
-This project presents an analysis of the data concerning offers made by a broker-dealer to different clients and their outcome. It includes midprice of a given security, ID of a client making inquiry, indication whether he intends to buy or sell, price offered by a broker-dealer, and the outcome of the deal (whether it was accepted or not).
+This project presents an analysis of the data concerning offers made by a dealer to different clients and their outcome. It includes midprice of a given security, ID of a client making inquiry, indication whether he intends to buy or sell, price offered by the dealer, and the outcome of the deal (whether it was accepted or not).
 
 First, two classification models are developed for each client - Logistic Regression and Linear Support Vector Machine (SVM). The data is divided into the training set and test set. The models are trained on the former, and their performance is assessed on the latter.
 
 Next, clustering using k-means algorithm is applied on the data in order to classify the clients based on their propensity to accept or refuse the deal depending on the offered bid-ask spread.
 
 The following files are related to this project:
-- [Analysis_of_the_Broker-Dealer's_Trading_Dataset.ipynb](/Analysis_of_the_Broker-Dealer's_Trading_Dataset.ipynb) - Jupyter notebook containing all the codes
+- [Deal_Outcome_Prediction_in_Quote-Driven_Market.ipynb](/Deal_Outcome_Prediction_in_Quote-Driven_Market.ipynb) - Jupyter notebook containing all the codes
 - [trading_data.csv](/trading_data.csv) - the dataset used for the analysis
 
 ## **Derivatives Pricing**
